@@ -15,7 +15,7 @@ __all__ = ["create_data_module"]
 
 def create_data_module(
     name: str = "mnist",
-    data_dir: str = "./data",
+    data_dir: str = "./datasets",
     batch_size: int = 32,
     transform: Literal[
         "standardize", "base", "resnet_pt", "efficientnetv2_pt"

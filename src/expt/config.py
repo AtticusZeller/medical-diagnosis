@@ -34,7 +34,7 @@ class OptimizerConfig:
 @dataclass
 class DataConfig:
     dataset: str = "MNIST"
-    data_dir: str = "./data"
+    data_dir: str = "./datasets"
     batch_size: int = 128
     augmentation: list[str] | None = None
     transform: Literal["standardize", "base"] = "standardize"

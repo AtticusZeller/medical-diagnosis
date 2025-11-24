@@ -164,7 +164,7 @@ class DataModule(L.LightningDataModule):
 
     def __init__(
         self,
-        data_dir: str | Path = "./data",
+        data_dir: str | Path = "./datasets",
         batch_size: int = 32,
         transforms: v2.Compose | None = None,
         val_split: float = 0.2,
