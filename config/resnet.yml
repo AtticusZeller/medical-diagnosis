@@ -1,0 +1,22 @@
+data:
+  augmentation: null
+  transform: resnet_pt
+  batch_size: 128
+  dataset: MNIST
+logger:
+  entity: atticux
+  project: medical-diagnosis
+  run_name: resnet18_MNIST
+model:
+  name: resnet18
+  unfreeze_layers:
+    - fc
+
+optimizer:
+  lr: 0.01
+  name: adam
+training:
+  accumulate_grad_batches: null
+  gradient_clip_val: null
+  max_epochs: 6
+  precision: null
