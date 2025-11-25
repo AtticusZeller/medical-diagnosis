@@ -22,7 +22,6 @@ def base_transform(target_size: tuple[int, int] = (224, 224)) -> v2.Compose:
     return v2.Compose(
         [
             v2.ToImage(),
-            v2.Grayscale(num_output_channels=3),  # Ensure all images have 3 channels
             v2.Resize(
                 target_size, interpolation=InterpolationMode.BILINEAR, antialias=True
             ),
@@ -56,7 +55,6 @@ def standardize_transform(
     return v2.Compose(
         [
             v2.ToImage(),
-            v2.Grayscale(num_output_channels=3),  # Ensure all images have 3 channels
             v2.Resize(
                 target_size, interpolation=InterpolationMode.BILINEAR, antialias=True
             ),
@@ -78,7 +76,6 @@ def resnet_pt_transform() -> v2.Compose:
     return v2.Compose(
         [
             v2.ToImage(),
-            v2.Grayscale(num_output_channels=3),  # Ensure all images have 3 channels
             v2.Resize(
                 235,
                 interpolation=InterpolationMode.BICUBIC,
@@ -104,7 +101,6 @@ def efficientnetv2_pt_transform() -> v2.Compose:
     return v2.Compose(
         [
             v2.ToImage(),
-            v2.Grayscale(num_output_channels=3),  # Ensure all images have 3 channels
             v2.Resize(
                 300,
                 interpolation=InterpolationMode.BICUBIC,
