@@ -66,7 +66,9 @@ class BaseModel(pl.LightningModule):
         logits = self(x)
         preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
-        acc = accuracy(preds, y, "multiclass", num_classes=10)
+        # Get num_classes from the model's output dimension
+        num_classes = logits.shape[1]
+        acc = accuracy(preds, y, "multiclass", num_classes=num_classes)
         return preds, loss, acc
 
 
@@ -261,7 +263,9 @@ def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
     if config.model.name.lower() == "resnet18":
         return (
             ResNet18Transfer(
-                lr=config.optimizer.lr, unfreeze_layers=config.model.unfreeze_layers
+                num_classes=config.data.num_classes,
+                lr=config.optimizer.lr,
+                unfreeze_layers=config.model.unfreeze_layers,
             )
             if model_path is None
             else ResNet18Transfer.load_from_checkpoint(model_path)
@@ -269,6 +273,7 @@ def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
     elif config.model.name.lower() == "efficientnet_v2":
         return (
             EfficientNetV2Transfer(
+                num_classes=config.data.num_classes,
                 lr=config.optimizer.lr,
                 efficient_version=config.model.efficient_version or "s",
                 unfreeze_layers=config.model.unfreeze_layers,

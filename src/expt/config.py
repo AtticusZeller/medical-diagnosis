@@ -28,11 +28,12 @@ class OptimizerConfig:
 
 @dataclass
 class DataConfig:
-    dataset: str = "MNIST"
+    dataset: str = "chest_xray"
     data_dir: str = "./datasets"
     batch_size: int = 128
+    num_classes: int = 2
     augmentation: list[str] | None = None
-    transform: Literal["standardize", "base"] = "standardize"
+    transform: Literal["base", "resnet_pt", "efficientnetv2_pt"] = "base"
 
 
 @dataclass

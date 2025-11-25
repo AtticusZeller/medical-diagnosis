@@ -26,9 +26,9 @@ def test_generate_default_configs(config_manager: ConfigManager, config_path: Pa
     assert all(
         key in config for key in ["model", "optimizer", "data", "training", "logger"]
     )
-    assert config["model"]["name"] == "MLP"
+    assert config["model"]["name"] == "CNN"
     assert config["optimizer"]["lr"] == 1e-4
-    assert config["data"]["dataset"] == "MNIST"
+    assert config["data"]["dataset"] == "chest_xray"
 
 
 def test_load_config(config_manager: ConfigManager, config_path: Path):
@@ -43,7 +43,7 @@ def test_load_config(config_manager: ConfigManager, config_path: Path):
     assert isinstance(config.logger, LoggerConfig)
 
     # Test default values
-    assert config.model.name == "MLP"
+    assert config.model.name == "CNN"
     assert config.optimizer.lr == 1e-4
     assert config.data.batch_size == 128
     assert config.training.max_epochs == 25
