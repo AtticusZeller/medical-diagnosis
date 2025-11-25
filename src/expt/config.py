@@ -9,12 +9,7 @@ from rich import print
 
 @dataclass
 class ModelConfig:
-    name: str = "MLP"
-    dropout: float = 0.2
-    activation: str | None = None
-    # MLP
-    n_layer_1: int | None = None
-    n_layer_2: int | None = None
+    name: str = "CNN"
     # CNN
     n_channels_1: int | None = None
     n_channels_2: int | None = None

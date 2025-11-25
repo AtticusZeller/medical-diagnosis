@@ -70,61 +70,6 @@ class BaseModel(pl.LightningModule):
         return preds, loss, acc
 
 
-class MLP(BaseModel):
-    """MINST MLP model
-    Ref: https://colab.research.google.com/github/wandb/examples/blob/master/colabs/pytorch-lightning/Optimize_Pytorch_Lightning_models_with_Weights_%26_Biases.ipynb#scrollTo=gzaiGUAz1saI
-    """
-
-    def __init__(
-        self,
-        num_classes: int = 10,
-        n_layer_1: int = 128,
-        n_layer_2: int = 256,
-        lr: float = 1e-3,
-        dropout_rate: float = 0.2,
-    ) -> None:
-        super().__init__()
-
-        # mnist images are (1, 28, 28) (channels, width, height)
-        self.layer_1 = Linear(28 * 28, n_layer_1)
-        self.bn_1 = BatchNorm1d(n_layer_1)
-        self.dropout_1 = Dropout(dropout_rate)
-        self.layer_2 = Linear(n_layer_1, n_layer_2)
-        self.bn_2 = BatchNorm1d(n_layer_2)
-        self.dropout_2 = Dropout(dropout_rate)
-        self.layer_3 = Linear(n_layer_2, num_classes)
-
-        # loss
-        self.loss = CrossEntropyLoss()
-
-        # optimizer parameters
-        self.lr = lr
-
-        # save hyper-parameters to self.hparams (auto-logged by W&B)
-        self.save_hyperparameters()
-
-    def forward(self, x: Tensor) -> Tensor:
-        batch_size, channels, width, height = x.size()
-
-        # (b, 1, 28, 28) -> (b, 1*28*28)
-        x = x.view(batch_size, -1)
-
-        # let's do 3 x (linear + relu)
-        x = self.layer_1(x)
-        x = self.bn_1(x)
-        x = F.relu(x)
-        x = self.dropout_1(x)
-
-        x = self.layer_2(x)
-        x = self.bn_2(x)
-        x = F.relu(x)
-        x = self.dropout_2(x)
-
-        x = self.layer_3(x)
-
-        return x
-
-
 class CNN(BaseModel):
     """CNN model for Fashion MNIST dataset
     Architecture:
@@ -312,30 +257,8 @@ class EfficientNetV2Transfer(FineTuneBaseModel):
 
 
 def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
-    if config.model.name.lower() == "mlp":
-        return (
-            MLP(
-                n_layer_1=config.model.n_layer_1,  # type: ignore
-                n_layer_2=config.model.n_layer_2,  # type: ignore
-                lr=config.optimizer.lr,
-                dropout_rate=config.model.dropout,
-            )
-            if model_path is None
-            else MLP.load_from_checkpoint(model_path)
-        )
-    elif config.model.name.lower() == "cnn":
-        return (
-            CNN(
-                n_channels_1=config.model.n_channels_1,  # type: ignore
-                n_channels_2=config.model.n_channels_2,  # type: ignore
-                n_fc_1=config.model.n_fc_1,  # type: ignore
-                lr=config.optimizer.lr,
-                dropout_rate=config.model.dropout,
-            )
-            if model_path is None
-            else CNN.load_from_checkpoint(model_path)
-        )
-    elif config.model.name.lower() == "resnet18":
+    """Factory function to create model based on config"""
+    if config.model.name.lower() == "resnet18":
         return (
             ResNet18Transfer(
                 lr=config.optimizer.lr, unfreeze_layers=config.model.unfreeze_layers
