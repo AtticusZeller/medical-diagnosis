@@ -209,7 +209,7 @@ class ResNet18Transfer(FineTuneBaseModel):
         # check_transform(self.model)
         # loss
         self.lr = lr
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = CrossEntropyLoss()
 
         # save hyperparameters
         self.save_hyperparameters()
@@ -247,7 +247,7 @@ class EfficientNetV2Transfer(FineTuneBaseModel):
         check_transform(self.model)
         # loss
         self.lr = lr
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = CrossEntropyLoss()
 
         # save hyperparameters
         self.save_hyperparameters()

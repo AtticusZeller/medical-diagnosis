@@ -48,8 +48,9 @@ explicit = true
 
 ## Test
 [tool.mypy]
-strict  = false
-exclude = ["venv", ".venv", "data"] # ignore dataset preprocessing type checking
+strict                 = false
+ignore_missing_imports = true                       # ignore missing type hints in third-party libs
+exclude                = ["venv", ".venv", "data/"] # ignore dataset preprocessing type checking
 
 [tool.pytest.ini_options]
 # Set additional command line options for pytest=
