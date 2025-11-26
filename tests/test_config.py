@@ -24,11 +24,13 @@ def test_generate_default_configs(config_manager: ConfigManager, config_path: Pa
         config = yaml.safe_load(f)
 
     assert all(
-        key in config for key in ["model", "optimizer", "data", "training", "logger"]
+        key in config
+        for key in ["model", "optimizer", "data", "training", "logger", "loss"]
     )
     assert config["model"]["name"] == "CNN"
     assert config["optimizer"]["lr"] == 1e-4
     assert config["data"]["dataset"] == "chest_xray"
+    assert config["loss"]["name"] == "cross_entropy"
 
 
 def test_load_config(config_manager: ConfigManager, config_path: Path):
@@ -48,6 +50,7 @@ def test_load_config(config_manager: ConfigManager, config_path: Path):
     assert config.data.batch_size == 128
     assert config.training.max_epochs == 25
     assert config.logger.project == "medical-diagnosis"
+    assert config.loss.name == "cross_entropy"
 
 
 def test_load_nonexistent_config(config_manager: ConfigManager, config_path: Path):
@@ -69,7 +72,7 @@ def test_config_as_dict(config_manager: ConfigManager, config_path: Path):
     assert isinstance(config_dict, dict)
     assert all(
         key in config_dict
-        for key in ["model", "optimizer", "data", "training", "logger"]
+        for key in ["model", "optimizer", "data", "training", "logger", "loss"]
     )
 
     # Verify dict contents match config object

@@ -10,6 +10,7 @@ from torch.nn import BatchNorm1d, CrossEntropyLoss, Dropout, Linear, functional 
 from torch.optim import Adam, Optimizer
 from torchmetrics.functional import accuracy
 
+from expt import loss
 from expt.config import Config
 from expt.utils import check_transform
 
@@ -19,7 +20,7 @@ class BaseModel(pl.LightningModule):
     Ref: https://colab.research.google.com/github/wandb/examples/blob/master/colabs/pytorch-lightning/Optimize_Pytorch_Lightning_models_with_Weights_%26_Biases.ipynb#scrollTo=gzaiGUAz1saI
     """
 
-    loss: CrossEntropyLoss
+    loss: nn.Module
     lr: float
 
     def forward(self, x: Tensor) -> Tensor:
@@ -88,6 +89,7 @@ class CNN(BaseModel):
         n_fc_1: int = 128,
         lr: float = 1e-3,
         dropout_rate: float = 0.2,
+        loss_fn: nn.Module | None = None,
     ) -> None:
         super().__init__()
 
@@ -116,7 +118,7 @@ class CNN(BaseModel):
         self.fc2 = Linear(n_fc_1, num_classes)
 
         # loss
-        self.loss = CrossEntropyLoss()
+        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
 
         # optimizer parameters
         self.lr = lr
@@ -199,6 +201,7 @@ class ResNet18Transfer(FineTuneBaseModel):
         num_classes: int = 10,
         lr: float = 1e-3,
         unfreeze_layers: list[str] | None = None,
+        loss_fn: nn.Module | None = None,
     ) -> None:
         super().__init__()
 
@@ -209,7 +212,7 @@ class ResNet18Transfer(FineTuneBaseModel):
         # check_transform(self.model)
         # loss
         self.lr = lr
-        self.loss = CrossEntropyLoss()
+        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
 
         # save hyperparameters
         self.save_hyperparameters()
@@ -236,6 +239,7 @@ class EfficientNetV2Transfer(FineTuneBaseModel):
         efficient_version: Literal["s", "m", "l"] = "s",
         lr: float = 1e-3,
         unfreeze_layers: list[str] | None = None,
+        loss_fn: nn.Module | None = None,
     ) -> None:
         super().__init__()
 
@@ -247,7 +251,7 @@ class EfficientNetV2Transfer(FineTuneBaseModel):
         check_transform(self.model)
         # loss
         self.lr = lr
-        self.loss = CrossEntropyLoss()
+        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
 
         # save hyperparameters
         self.save_hyperparameters()
@@ -260,12 +264,14 @@ class EfficientNetV2Transfer(FineTuneBaseModel):
 
 def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
     """Factory function to create model based on config"""
+    loss_fn = loss.create_loss_function(config.loss)
     if config.model.name.lower() == "resnet18":
         return (
             ResNet18Transfer(
                 num_classes=config.data.num_classes,
                 lr=config.optimizer.lr,
                 unfreeze_layers=config.model.unfreeze_layers,
+                loss_fn=loss_fn,
             )
             if model_path is None
             else ResNet18Transfer.load_from_checkpoint(model_path)
@@ -277,6 +283,7 @@ def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
                 lr=config.optimizer.lr,
                 efficient_version=config.model.efficient_version or "s",
                 unfreeze_layers=config.model.unfreeze_layers,
+                loss_fn=loss_fn,
             )
             if model_path is None
             else EfficientNetV2Transfer.load_from_checkpoint(model_path)

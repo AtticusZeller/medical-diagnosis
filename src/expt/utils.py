@@ -1,3 +1,5 @@
+import numpy as np
+import torch
 from lightning.pytorch.callbacks import RichProgressBar
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from rich import print
@@ -43,3 +45,21 @@ def check_transform(model: nn.Module) -> None:
     transform = create_transform(**config)
     print(config)
     print(transform)
+
+
+def to_tensor(
+    data, requires_grad=True, dtype=torch.float32, device="cuda"
+) -> torch.Tensor:
+    """
+    Convert numpy array or list to a PyTorch tensor.
+    """
+    if (
+        not isinstance(data, list)
+        and not isinstance(data, np.ndarray)
+        and not torch.is_tensor(data)
+        and not isinstance(data, int)
+    ):
+        raise TypeError("to tensor needs list,np.ndarray or tensor")
+
+    data = torch.as_tensor(data, dtype=dtype, device=device)  # More efficient
+    return data.requires_grad_(requires_grad)

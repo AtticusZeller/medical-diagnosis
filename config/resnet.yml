@@ -8,6 +8,12 @@ logger:
   entity: atticux
   project: medical-diagnosis
   run_name: resnet18_chest_xray
+loss:
+  alpha: null
+  class_weights: null
+  gamma: null
+  name: cross_entropy
+  reduction: mean
 model:
   name: resnet18
   unfreeze_layers:

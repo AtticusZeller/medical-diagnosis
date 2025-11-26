@@ -27,6 +27,15 @@ class OptimizerConfig:
 
 
 @dataclass
+class LossConfig:
+    name: Literal["cross_entropy", "focal", "bce", "dice"] = "cross_entropy"
+    class_weights: list[float] | None = None  # for weighted cross_entropy
+    alpha: float | None = None  # for focal loss
+    gamma: float | None = None  # for focal loss
+    reduction: Literal["mean", "sum", "none"] = "mean"
+
+
+@dataclass
 class DataConfig:
     dataset: str = "chest_xray"
     data_dir: str = "./datasets"
@@ -58,6 +67,7 @@ class Config:
     data: DataConfig
     training: TrainingConfig
     optimizer: OptimizerConfig
+    loss: LossConfig
 
 
 class ConfigManager:
@@ -70,6 +80,7 @@ class ConfigManager:
             "data": DataConfig,
             "training": TrainingConfig,
             "logger": LoggerConfig,
+            "loss": LossConfig,
         }
 
     def generate_default_configs(self) -> None:
