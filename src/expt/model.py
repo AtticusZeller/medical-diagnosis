@@ -8,7 +8,7 @@ from rich import print
 from torch import Tensor, nn
 from torch.nn import BatchNorm1d, CrossEntropyLoss, Dropout, Linear, functional as F
 from torch.optim import Adam, Optimizer
-from torchmetrics.functional import accuracy
+from torchmetrics.functional import accuracy, f1_score, precision, recall
 
 from expt import loss
 from expt.config import Config
@@ -16,9 +16,7 @@ from expt.utils import check_transform
 
 
 class BaseModel(pl.LightningModule):
-    """MINST MLP model
-    Ref: https://colab.research.google.com/github/wandb/examples/blob/master/colabs/pytorch-lightning/Optimize_Pytorch_Lightning_models_with_Weights_%26_Biases.ipynb#scrollTo=gzaiGUAz1saI
-    """
+    """wandb logger accumulate metrics and calculate ave for all steps"""
 
     loss: nn.Module
     lr: float
@@ -28,49 +26,85 @@ class BaseModel(pl.LightningModule):
 
     def training_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
         """needs to return a loss from a single batch"""
-        _, loss, acc = self._get_preds_loss_accuracy(batch)
+
+        x, y = batch
+        logits = self(x)
+        preds = torch.argmax(logits, dim=1)
+        loss = self.loss(logits, y)
+
+        metrics = self._get_metrics(preds, y, metrics_prefix="train_")
 
         # Log loss and metric
-        self.log("train_loss", loss)
-        self.log("train_accuracy", acc)
+        # steps for train loss, set log_every_n_steps for trainer in config.yml
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        # metrics for epoch
+        self.log_dict(metrics, on_step=False, on_epoch=True)
 
         return loss
 
     def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
         """used for logging metrics"""
-        preds, loss, acc = self._get_preds_loss_accuracy(batch)
+
+        x, y = batch
+        logits = self(x)
+        preds = torch.argmax(logits, dim=1)
+        loss = self.loss(logits, y)
+        metrics = self._get_metrics(preds, y, metrics_prefix="val_")
 
         # Log loss and metric
-        self.log("val_loss", loss)
-        self.log("val_accuracy", acc)
+        # val/test focus on epoch metrics, step metrics are meaningless
+        self.log("val_loss", loss, on_step=False, on_epoch=True)
+        self.log_dict(metrics, on_step=False, on_epoch=True)
 
         # Let's return preds to use it in a custom callback
         return preds
 
     def test_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         """used for logging metrics"""
-        _, loss, acc = self._get_preds_loss_accuracy(batch)
+        x, y = batch
+        logits = self(x)
+        preds = torch.argmax(logits, dim=1)
+        loss = self.loss(logits, y)
+
+        metrics = self._get_metrics(preds, y, metrics_prefix="test_")
 
         # Log loss and metric
-        self.log("test_loss", loss)
-        self.log("test_accuracy", acc)
+        # val/test focus on epoch metrics, step metrics are meaningless
+        self.log("test_loss", loss, on_step=False, on_epoch=True)
+        self.log_dict(metrics, on_step=False, on_epoch=True)
 
     def configure_optimizers(self) -> Optimizer:
         """defines model optimizer"""
         return Adam(self.parameters(), lr=self.lr)
 
-    def _get_preds_loss_accuracy(
-        self, batch: tuple[Tensor, Tensor]
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """convenience function since train/valid/test steps are similar"""
-        x, y = batch
-        logits = self(x)
-        preds = torch.argmax(logits, dim=1)
-        loss = self.loss(logits, y)
+    def _get_metrics(
+        self, preds: Tensor, labels: Tensor, metrics_prefix: str | None = None
+    ) -> dict[str, Tensor]:
+        """Calculate accuracy, precision, recall, f1 score for a batch"""
+
         # Get num_classes from the model's output dimension
-        num_classes = logits.shape[1]
-        acc = accuracy(preds, y, "multiclass", num_classes=num_classes)
-        return preds, loss, acc
+        num_classes = preds.shape[1]
+        # Calculate metrics for one batch for the step
+        acc = accuracy(preds, labels, "multiclass", num_classes=num_classes)
+        prec = precision(
+            preds, labels, "multiclass", num_classes=num_classes, average="macro"
+        )
+        rc = recall(
+            preds, labels, "multiclass", num_classes=num_classes, average="macro"
+        )
+        f1 = f1_score(
+            preds, labels, "multiclass", num_classes=num_classes, average="macro"
+        )
+        # Prepare metrics dictionary with prefix
+        metrics_prefix = metrics_prefix if metrics_prefix is not None else ""
+        metrics_dict = {
+            f"{metrics_prefix}accuracy": acc,
+            f"{metrics_prefix}precision": prec,
+            f"{metrics_prefix}recall": rc,
+            f"{metrics_prefix}f1": f1,
+        }
+
+        return metrics_dict
 
 
 class CNN(BaseModel):
@@ -215,7 +249,7 @@ class ResNet18Transfer(FineTuneBaseModel):
         self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
 
         # save hyperparameters
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["loss_fn"])
         if unfreeze_layers is not None:
             self.freeze_except(unfreeze_layers)
         # self.resnet = torch.compile(self.resnet)

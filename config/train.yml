@@ -7,6 +7,9 @@ data:
   transform: base
 logger:
   entity: atticux
+  log_every_n_steps: 50
+  mode: max
+  monitor: val_f1_epoch
   project: medical-diagnosis
   run_name: test_run
 loss:

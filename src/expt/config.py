@@ -58,6 +58,10 @@ class LoggerConfig:
     run_name: str = "test_run"
     entity: str = "atticux"  # set to name of your wandb team
     project: str = "medical-diagnosis"
+    # checkpoint_callback
+    monitor: str = "val_f1"
+    mode: str = "max"
+    log_every_n_steps: int = 50
 
 
 @dataclass

@@ -66,10 +66,11 @@ def training(config: Config) -> str | None:
             callbacks=[
                 RichModelSummary(3),  # print model structure
                 create_rich_progress_bar(),
-                logger.checkpoint_callback(),
+                logger.checkpoint_callback(config.logger.monitor, config.logger.mode),
             ],
             accelerator="gpu",
             max_epochs=config.training.max_epochs,
+            log_every_n_steps=config.logger.log_every_n_steps,
         )
         trainer.fit(model, datamodule)
 
@@ -112,6 +113,7 @@ def evaluation(config: Config, run_id: str) -> None:
             accelerator="gpu",
             enable_model_summary=True,
             callbacks=[RichModelSummary(3), create_rich_progress_bar()],
+            log_every_n_steps=config.logger.log_every_n_steps,
         )
         trainer.test(model, datamodule)
 

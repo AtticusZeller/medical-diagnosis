@@ -6,6 +6,9 @@ data:
   dataset: chest_xray
 logger:
   entity: atticux
+  log_every_n_steps: 5
+  mode: max
+  monitor: val_f1
   project: medical-diagnosis
   run_name: resnet18_chest_xray
 loss:
