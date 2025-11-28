@@ -4,11 +4,12 @@ from typing import Literal
 import lightning.pytorch as pl
 import timm
 import torch
+import wandb
 from rich import print
 from torch import Tensor, nn
 from torch.nn import BatchNorm1d, CrossEntropyLoss, Dropout, Linear, functional as F
 from torch.optim import Adam, Optimizer
-from torchmetrics.functional import accuracy, f1_score, precision, recall
+from torchmetrics.functional import accuracy, auroc, f1_score, precision, recall
 
 from expt import loss
 from expt.config import Config
@@ -20,6 +21,11 @@ class BaseModel(pl.LightningModule):
 
     loss: nn.Module
     lr: float
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
 
     def forward(self, x: Tensor) -> Tensor:
         raise NotImplementedError
@@ -36,13 +42,13 @@ class BaseModel(pl.LightningModule):
 
         # Log loss and metric
         # steps for train loss, set log_every_n_steps for trainer in config.yml
-        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        self.log("train_loss", loss, on_step=False, on_epoch=True)
         # metrics for epoch
         self.log_dict(metrics, on_step=False, on_epoch=True)
 
         return loss
 
-    def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
+    def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         """used for logging metrics"""
 
         x, y = batch
@@ -56,8 +62,26 @@ class BaseModel(pl.LightningModule):
         self.log("val_loss", loss, on_step=False, on_epoch=True)
         self.log_dict(metrics, on_step=False, on_epoch=True)
 
-        # Let's return preds to use it in a custom callback
-        return preds
+        # accumulate outputs for epoch-end metrics
+        self.validation_step_outputs.append(
+            {"logits": logits.detach(), "labels": y.detach()}
+        )
+
+    def on_validation_epoch_end(self) -> None:
+        if len(self.validation_step_outputs) == 0:
+            return
+
+        all_logits = torch.cat([x["logits"] for x in self.validation_step_outputs])
+        all_labels = torch.cat([x["labels"] for x in self.validation_step_outputs])
+
+        probs = F.softmax(all_logits, dim=1)
+        num_classes = all_logits.shape[1]
+
+        aur = auroc(probs, all_labels, task="multiclass", num_classes=num_classes)
+        assert aur is not None, "AUROC calculation failed"
+        self.log("val_auroc", aur, on_step=False, on_epoch=True)
+
+        self.validation_step_outputs.clear()
 
     def test_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         """used for logging metrics"""
@@ -73,6 +97,34 @@ class BaseModel(pl.LightningModule):
         self.log("test_loss", loss, on_step=False, on_epoch=True)
         self.log_dict(metrics, on_step=False, on_epoch=True)
 
+        # accumulate outputs for epoch-end metrics
+        self.test_step_outputs.append({"logits": logits.detach(), "labels": y.detach()})
+
+    def on_test_epoch_end(self) -> None:
+        if len(self.test_step_outputs) == 0:
+            return
+
+        all_logits = torch.cat([x["logits"] for x in self.test_step_outputs])
+        all_labels = torch.cat([x["labels"] for x in self.test_step_outputs])
+
+        num_classes = all_logits.shape[1]
+
+        probs = F.softmax(all_logits, dim=1)
+        aur = auroc(probs, all_labels, task="multiclass", num_classes=num_classes)
+        assert aur is not None, "AUROC calculation failed"
+        self.log("test_auroc", aur, on_step=False, on_epoch=True)
+        wandb.log(
+            {
+                "conf_mat": wandb.plot.confusion_matrix(
+                    probs=probs.cpu().numpy().tolist(),
+                    y_true=all_labels.cpu().numpy().tolist(),
+                    class_names=["NORMAL", "PNEUMONIA"],
+                )
+            }
+        )
+
+        self.test_step_outputs.clear()
+
     def configure_optimizers(self) -> Optimizer:
         """defines model optimizer"""
         return Adam(self.parameters(), lr=self.lr)
@@ -83,7 +135,7 @@ class BaseModel(pl.LightningModule):
         """Calculate accuracy, precision, recall, f1 score for a batch"""
 
         # Get num_classes from the model's output dimension
-        num_classes = preds.shape[1]
+        num_classes = preds.shape[0]
         # Calculate metrics for one batch for the step
         acc = accuracy(preds, labels, "multiclass", num_classes=num_classes)
         prec = precision(
