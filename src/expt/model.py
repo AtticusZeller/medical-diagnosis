@@ -38,7 +38,9 @@ class BaseModel(pl.LightningModule):
         preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
 
-        metrics = self._get_metrics(preds, y, metrics_prefix="train_")
+        metrics = self._get_metrics(
+            preds, y, num_classes=logits.shape[1], metrics_prefix="train_"
+        )
 
         # Log loss and metric
         # steps for train loss, set log_every_n_steps for trainer in config.yml
@@ -55,7 +57,9 @@ class BaseModel(pl.LightningModule):
         logits = self(x)
         preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
-        metrics = self._get_metrics(preds, y, metrics_prefix="val_")
+        metrics = self._get_metrics(
+            preds, y, num_classes=logits.shape[1], metrics_prefix="val_"
+        )
 
         # Log loss and metric
         # val/test focus on epoch metrics, step metrics are meaningless
@@ -77,7 +81,13 @@ class BaseModel(pl.LightningModule):
         probs = F.softmax(all_logits, dim=1)
         num_classes = all_logits.shape[1]
 
-        aur = auroc(probs, all_labels, task="multiclass", num_classes=num_classes)
+        aur = auroc(
+            probs,
+            all_labels,
+            task="multiclass",
+            num_classes=num_classes,
+            average="macro",
+        )
         assert aur is not None, "AUROC calculation failed"
         self.log("val_auroc", aur, on_step=False, on_epoch=True)
 
@@ -90,7 +100,9 @@ class BaseModel(pl.LightningModule):
         preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
 
-        metrics = self._get_metrics(preds, y, metrics_prefix="test_")
+        metrics = self._get_metrics(
+            preds, y, num_classes=logits.shape[1], metrics_prefix="test_"
+        )
 
         # Log loss and metric
         # val/test focus on epoch metrics, step metrics are meaningless
@@ -110,7 +122,13 @@ class BaseModel(pl.LightningModule):
         num_classes = all_logits.shape[1]
 
         probs = F.softmax(all_logits, dim=1)
-        aur = auroc(probs, all_labels, task="multiclass", num_classes=num_classes)
+        aur = auroc(
+            probs,
+            all_labels,
+            task="multiclass",
+            num_classes=num_classes,
+            average="macro",
+        )
         assert aur is not None, "AUROC calculation failed"
         self.log("test_auroc", aur, on_step=False, on_epoch=True)
         wandb.log(
@@ -130,12 +148,14 @@ class BaseModel(pl.LightningModule):
         return Adam(self.parameters(), lr=self.lr)
 
     def _get_metrics(
-        self, preds: Tensor, labels: Tensor, metrics_prefix: str | None = None
+        self,
+        preds: Tensor,
+        labels: Tensor,
+        num_classes: int,
+        metrics_prefix: str | None = None,
     ) -> dict[str, Tensor]:
         """Calculate accuracy, precision, recall, f1 score for a batch"""
 
-        # Get num_classes from the model's output dimension
-        num_classes = preds.shape[0]
         # Calculate metrics for one batch for the step
         acc = accuracy(preds, labels, "multiclass", num_classes=num_classes)
         prec = precision(
