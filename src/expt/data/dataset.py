@@ -3,11 +3,16 @@ from pathlib import Path
 from typing import Any
 
 import lightning as L
+import numpy as np
+import torch
 from PIL import Image
+from sklearn.model_selection import train_test_split
 from torch import Tensor
-from torch.utils.data import DataLoader, Subset, random_split
+from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 from torchvision.datasets import VisionDataset
 from torchvision.transforms import v2
+
+from expt.utils import to_tensor
 
 
 class ChestXray(VisionDataset):
@@ -122,9 +127,6 @@ class DataModule(L.LightningDataModule):
 
     # Dataset registry mapping names to dataset classes
     DATASET_REGISTRY = {"chest_xray": ChestXray}
-    train_data: Subset[Any]
-    val_data: Subset[Any]
-    test_data: VisionDataset
 
     def __init__(
         self,
@@ -161,6 +163,11 @@ class DataModule(L.LightningDataModule):
         self.dataset_name = dataset_name.lower()
         self.dataset_class = self.DATASET_REGISTRY[self.dataset_name]
 
+        self.train_data: Subset[Any] | None = None
+        self.val_data: Subset[Any] | None = None
+        self.test_data: VisionDataset | None = None
+        self.train_sampler: WeightedRandomSampler | None = None
+
     def setup(self, stage: str | None = None) -> None:
         if stage == "fit" or stage is None:
             # Load full training dataset
@@ -168,11 +175,40 @@ class DataModule(L.LightningDataModule):
                 self.data_dir, train=True, transform=self.transform
             )
 
-            # Split into train and val
-            train_size = int(len(full_data) * (1 - self.val_split))
-            val_size = len(full_data) - train_size
-            self.train_data, self.val_data = random_split(
-                full_data, [train_size, val_size]
+            # # Split into train and val it works as classes are balanced
+            # train_size = int(len(full_data) * (1 - self.val_split))
+            # val_size = len(full_data) - train_size
+            # self.train_data, self.val_data = random_split(
+            #     full_data, [train_size, val_size]
+            # )
+
+            # Stratified split into train and val
+            labels = [label for _, label in full_data.samples]
+            train_idx, val_idx = train_test_split(
+                np.arange(len(labels)),
+                test_size=self.val_split,
+                shuffle=True,
+                stratify=labels,
+                random_state=42,
+            )
+            self.train_data = Subset(full_data, train_idx)
+            self.val_data = Subset(full_data, val_idx)
+
+            # batch for the classes are not balanced
+            train_labels = [labels[i] for i in train_idx]
+            class_counts = torch.bincount(
+                to_tensor(train_labels, dtype=torch.int64, requires_grad=False)
+            )
+            class_weights = 1.0 / class_counts.float()
+
+            # Assign weights to each sample
+            sample_weights = [
+                float(class_weights[label].item()) for label in train_labels
+            ]
+            self.train_sampler = WeightedRandomSampler(
+                weights=sample_weights,
+                num_samples=len(sample_weights),
+                replacement=True,
             )
 
         if stage == "test" or stage is None:
@@ -183,16 +219,27 @@ class DataModule(L.LightningDataModule):
 
     def train_dataloader(self) -> DataLoader:
         """This is the dataloader that the Trainer fit() method uses."""
+        assert self.train_data is not None, (
+            "Train data not initialized. Did you forget to call setup('fit')?"
+        )
+        assert self.train_sampler is not None, (
+            "Train sampler not initialized. Did you forget to call setup('fit')?"
+        )
+
         return DataLoader(
             self.train_data,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
+            sampler=self.train_sampler,  #  for the classes are not balanced
             num_workers=self.num_workers,
             persistent_workers=True,
         )
 
     def val_dataloader(self) -> DataLoader:
         """This is the dataloader that the Trainer fit() and validate() methods uses."""
+        assert self.val_data is not None, (
+            "Validation data not initialized. Did you forget to call setup('fit')?"
+        )
         return DataLoader(
             self.val_data,
             batch_size=self.batch_size,
@@ -202,6 +249,9 @@ class DataModule(L.LightningDataModule):
 
     def test_dataloader(self) -> DataLoader:
         """This is the dataloader that the Trainer test() method uses."""
+        assert self.test_data is not None, (
+            "Test data not initialized. Did you forget to call setup('test')?"
+        )
         return DataLoader(
             self.test_data, batch_size=self.batch_size, num_workers=self.num_workers
         )
