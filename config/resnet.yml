@@ -8,7 +8,7 @@ logger:
   entity: atticux
   log_every_n_steps: 5
   mode: max
-  monitor: val_f1
+  monitor: val_best_f1
   project: medical-diagnosis
   run_name: resnet18_chest_xray
 loss:
@@ -28,5 +28,5 @@ optimizer:
 training:
   accumulate_grad_batches: null
   gradient_clip_val: null
-  max_epochs: 6
+  max_epochs: 8
   precision: null
