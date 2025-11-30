@@ -6,10 +6,10 @@ import timm
 import torch
 import wandb
 from rich import print
-from torch import Tensor, nn
+from torch import Tensor, is_tensor, nn
 from torch.nn import BatchNorm1d, CrossEntropyLoss, Dropout, Linear, functional as F
 from torch.optim import Adam, Optimizer
-from torchmetrics.functional import accuracy, auroc, f1_score, precision, recall
+from torchmetrics.functional import accuracy, auroc, f1_score, precision_recall_curve
 
 from expt import loss
 from expt.config import Config
@@ -26,6 +26,8 @@ class BaseModel(pl.LightningModule):
         super().__init__(*args, **kwargs)
         self.validation_step_outputs = []
         self.test_step_outputs = []
+        self.best_val_metric = 0.0
+        self.best_threshold = 0.5
 
     def forward(self, x: Tensor) -> Tensor:
         raise NotImplementedError
@@ -35,18 +37,15 @@ class BaseModel(pl.LightningModule):
 
         x, y = batch
         logits = self(x)
+        # threshold at 0.5 for monitor accuracy
         preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
 
-        metrics = self._get_metrics(
-            preds, y, num_classes=logits.shape[1], metrics_prefix="train_"
-        )
-
-        # Log loss and metric
+        acc = accuracy(preds, y, task="binary")
+        # Log loss and acc
         # steps for train loss, set log_every_n_steps for trainer in config.yml
         self.log("train_loss", loss, on_step=False, on_epoch=True)
-        # metrics for epoch
-        self.log_dict(metrics, on_step=False, on_epoch=True)
+        self.log("train_acc", acc, on_step=False, on_epoch=True)
 
         return loss
 
@@ -55,16 +54,11 @@ class BaseModel(pl.LightningModule):
 
         x, y = batch
         logits = self(x)
-        preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
-        metrics = self._get_metrics(
-            preds, y, num_classes=logits.shape[1], metrics_prefix="val_"
-        )
 
-        # Log loss and metric
+        # Log loss and f1
         # val/test focus on epoch metrics, step metrics are meaningless
         self.log("val_loss", loss, on_step=False, on_epoch=True)
-        self.log_dict(metrics, on_step=False, on_epoch=True)
 
         # accumulate outputs for epoch-end metrics
         self.validation_step_outputs.append(
@@ -72,6 +66,11 @@ class BaseModel(pl.LightningModule):
         )
 
     def on_validation_epoch_end(self) -> None:
+        """
+        - calculate AUROC for all validation set
+        - find the best threshold based on F1 score
+        - log PR curve to wandb
+        """
         if len(self.validation_step_outputs) == 0:
             return
 
@@ -79,104 +78,118 @@ class BaseModel(pl.LightningModule):
         all_labels = torch.cat([x["labels"] for x in self.validation_step_outputs])
 
         probs = F.softmax(all_logits, dim=1)
-        num_classes = all_logits.shape[1]
+        probs_pos = probs[:, 1]
 
-        aur = auroc(
-            probs,
-            all_labels,
-            task="multiclass",
-            num_classes=num_classes,
-            average="macro",
-        )
+        # calculate AUROC
+        aur = auroc(probs_pos, all_labels, task="binary")
         assert aur is not None, "AUROC calculation failed"
         self.log("val_auroc", aur, on_step=False, on_epoch=True)
+
+        # log PR curve to wandb if AUROC improved
+        if aur > self.best_val_metric:
+            self.best_val_metric = aur
+            wandb.log(
+                {
+                    "val_PR_curve": wandb.plot.pr_curve(
+                        all_labels.cpu().numpy(),
+                        probs.cpu().numpy(),
+                        labels=["NORMAL", "PNEUMONIA"],
+                        classes_to_plot=[1],  # PNEUMONIA class
+                        title="Precision-Recall Curve on Validation Set",
+                    )
+                }
+            )
+
+        precisions, recalls, thresholds = precision_recall_curve(
+            probs_pos, all_labels, task="binary"
+        )
+        assert is_tensor(precisions) and is_tensor(recalls), (
+            "Precision or Recall calculation failed"
+        )
+        f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-8)
+        best_idx = torch.argmax(f1_scores)
+        self.best_threshold = thresholds[best_idx]
+        best_f1 = f1_scores[best_idx]
+        self.log(
+            "val_best_threshold", self.best_threshold, on_step=False, on_epoch=True
+        )
+        self.log("val_best_f1", best_f1, on_step=False, on_epoch=True)
 
         self.validation_step_outputs.clear()
 
     def test_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
-        """used for logging metrics"""
         x, y = batch
         logits = self(x)
-        preds = torch.argmax(logits, dim=1)
         loss = self.loss(logits, y)
 
-        metrics = self._get_metrics(
-            preds, y, num_classes=logits.shape[1], metrics_prefix="test_"
-        )
-
-        # Log loss and metric
+        # Log loss
         # val/test focus on epoch metrics, step metrics are meaningless
         self.log("test_loss", loss, on_step=False, on_epoch=True)
-        self.log_dict(metrics, on_step=False, on_epoch=True)
 
         # accumulate outputs for epoch-end metrics
         self.test_step_outputs.append({"logits": logits.detach(), "labels": y.detach()})
 
     def on_test_epoch_end(self) -> None:
+        """
+        - calculate AUROC for all validation set
+        - calculate F1 score 、
+        - calculate accuracy
+        - log confusion matrix to wandb
+        - log PR curve to wandb
+        """
         if len(self.test_step_outputs) == 0:
             return
 
         all_logits = torch.cat([x["logits"] for x in self.test_step_outputs])
         all_labels = torch.cat([x["labels"] for x in self.test_step_outputs])
 
-        num_classes = all_logits.shape[1]
-
         probs = F.softmax(all_logits, dim=1)
-        aur = auroc(
-            probs,
-            all_labels,
-            task="multiclass",
-            num_classes=num_classes,
-            average="macro",
-        )
+        probs_pos = probs[:, 1]
+
+        # calculate AUROC
+        aur = auroc(probs_pos, all_labels, task="binary")
         assert aur is not None, "AUROC calculation failed"
         self.log("test_auroc", aur, on_step=False, on_epoch=True)
+
+        # make predictions based on best threshold
+        preds = (probs_pos >= self.best_threshold).long()
+
+        # calculate F1 score
+        test_f1 = f1_score(preds, all_labels, task="binary")
+        self.log("test_f1", test_f1, on_step=False, on_epoch=True)
+
+        # calculate accuracy
+        test_acc = accuracy(preds, all_labels, task="binary")
+        self.log("test_acc", test_acc, on_step=False, on_epoch=True)
+
+        # Confusion matrix
         wandb.log(
             {
                 "conf_mat": wandb.plot.confusion_matrix(
-                    probs=probs.cpu().numpy().tolist(),
+                    preds=preds.cpu().numpy().tolist(),
                     y_true=all_labels.cpu().numpy().tolist(),
                     class_names=["NORMAL", "PNEUMONIA"],
                 )
             }
         )
 
+        # PR curve
+        wandb.log(
+            {
+                "test_PR_curve": wandb.plot.pr_curve(
+                    all_labels.cpu().numpy(),
+                    probs.cpu().numpy(),
+                    labels=["NORMAL", "PNEUMONIA"],
+                    classes_to_plot=[1],  # PNEUMONIA class
+                    title="Precision-Recall Curve on Test Set",
+                )
+            }
+        )
         self.test_step_outputs.clear()
 
     def configure_optimizers(self) -> Optimizer:
         """defines model optimizer"""
         return Adam(self.parameters(), lr=self.lr)
-
-    def _get_metrics(
-        self,
-        preds: Tensor,
-        labels: Tensor,
-        num_classes: int,
-        metrics_prefix: str | None = None,
-    ) -> dict[str, Tensor]:
-        """Calculate accuracy, precision, recall, f1 score for a batch"""
-
-        # Calculate metrics for one batch for the step
-        acc = accuracy(preds, labels, "multiclass", num_classes=num_classes)
-        prec = precision(
-            preds, labels, "multiclass", num_classes=num_classes, average="macro"
-        )
-        rc = recall(
-            preds, labels, "multiclass", num_classes=num_classes, average="macro"
-        )
-        f1 = f1_score(
-            preds, labels, "multiclass", num_classes=num_classes, average="macro"
-        )
-        # Prepare metrics dictionary with prefix
-        metrics_prefix = metrics_prefix if metrics_prefix is not None else ""
-        metrics_dict = {
-            f"{metrics_prefix}accuracy": acc,
-            f"{metrics_prefix}precision": prec,
-            f"{metrics_prefix}recall": rc,
-            f"{metrics_prefix}f1": f1,
-        }
-
-        return metrics_dict
 
 
 class CNN(BaseModel):
