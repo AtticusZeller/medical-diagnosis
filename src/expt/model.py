@@ -7,7 +7,7 @@ import torch
 import wandb
 from rich import print
 from torch import Tensor, is_tensor, nn
-from torch.nn import BatchNorm1d, CrossEntropyLoss, Dropout, Linear, functional as F
+from torch.nn import CrossEntropyLoss, functional as F
 from torch.optim import Adam, Optimizer
 from torchmetrics.functional import accuracy, auroc, f1_score, precision_recall_curve
 
@@ -190,87 +190,6 @@ class BaseModel(pl.LightningModule):
     def configure_optimizers(self) -> Optimizer:
         """defines model optimizer"""
         return Adam(self.parameters(), lr=self.lr)
-
-
-class CNN(BaseModel):
-    """CNN model for Fashion MNIST dataset
-    Architecture:
-    - 2 Convolutional layers followed by max pooling
-    - 2 Fully connected layers
-    - Batch normalization and dropout for regularization
-    """
-
-    def __init__(
-        self,
-        num_classes: int = 10,
-        n_channels_1: int = 32,
-        n_channels_2: int = 64,
-        n_fc_1: int = 128,
-        lr: float = 1e-3,
-        dropout_rate: float = 0.2,
-        loss_fn: nn.Module | None = None,
-    ) -> None:
-        super().__init__()
-
-        # First conv block
-        self.conv1 = torch.nn.Conv2d(1, n_channels_1, kernel_size=5, padding=2)
-        self.bn1 = torch.nn.BatchNorm2d(n_channels_1)
-        self.pool1 = torch.nn.MaxPool2d(kernel_size=2)
-        self.dropout1 = Dropout(dropout_rate)
-
-        # Second conv block
-        self.conv2 = torch.nn.Conv2d(
-            n_channels_1, n_channels_2, kernel_size=3, padding=1
-        )
-        self.bn2 = torch.nn.BatchNorm2d(n_channels_2)
-        self.pool2 = torch.nn.MaxPool2d(kernel_size=2)
-        self.dropout2 = Dropout(dropout_rate)
-
-        # Calculate size after convolutions and pooling
-        # Input: 28x28 -> Conv1: 28x28 -> Pool1: 14x14 -> Conv2: 14x14 -> Pool2: 7x7
-        conv_output_size = 7 * 7 * n_channels_2
-
-        # Fully connected layers
-        self.fc1 = Linear(conv_output_size, n_fc_1)
-        self.bn3 = BatchNorm1d(n_fc_1)
-        self.dropout3 = Dropout(dropout_rate)
-        self.fc2 = Linear(n_fc_1, num_classes)
-
-        # loss
-        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
-
-        # optimizer parameters
-        self.lr = lr
-
-        # save hyper-parameters to self.hparams (auto-logged by W&B)
-        self.save_hyperparameters()
-
-    def forward(self, x: Tensor) -> Tensor:
-        # First conv block
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.pool1(x)
-        x = self.dropout1(x)
-
-        # Second conv block
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = F.relu(x)
-        x = self.pool2(x)
-        x = self.dropout2(x)
-
-        # Flatten
-        x = x.view(x.size(0), -1)
-
-        # Fully connected layers
-        x = self.fc1(x)
-        x = self.bn3(x)
-        x = F.relu(x)
-        x = self.dropout3(x)
-        x = self.fc2(x)
-
-        return x
 
 
 class FineTuneBaseModel(BaseModel):
