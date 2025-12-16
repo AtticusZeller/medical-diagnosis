@@ -49,12 +49,12 @@ The project uses a command-line interface (CLI) for running experiments. The mai
 
 ### Training
 
-To train a model, use the `--train` flag. The configuration for the training can be specified with the `--config-file` option.
+To train a model, use the `--train` flag. The configuration for the training can be specified with the `--config` option.
 
 > [!warning]
 > update `logger.entity` of config file with your [wandb](https://wandb.ai/) team name
 ```bash
-python src/expt/main.py --config-file config/resnet.yml --train
+python src/expt/main.py --config config/resnet.yml --train
 ```
 
 This will train the model and, upon completion, run the evaluation on the test set. The run ID of the training will be used for the evaluation.
@@ -66,7 +66,7 @@ This will train the model and, upon completion, run the evaluation on the test s
 To evaluate a specific model, you need to provide its run ID.
 
 ```bash
-python src/expt/main.py --config-file config/resnet.yml --eval-id <your_run_id>
+python src/expt/main.py --config config/resnet.yml --eval-id <your_run_id>
 ```
 
 ## Configuration
@@ -81,7 +81,7 @@ The experiments are configured using YAML files located in the `config` director
 You can create your own configuration files to experiment with different models, datasets, and hyperparameters.
 
 ## Tracking metrics in wandb
-<img width="4068" height="2272" alt="image" src="https://github.com/user-attachments/assets/069dca9d-e4af-455f-93c3-9bac5d063fc7" />
+![alt text](assets/image.png)
 
 ## License
 
