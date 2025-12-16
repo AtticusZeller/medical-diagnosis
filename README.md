@@ -81,7 +81,7 @@ The experiments are configured using YAML files located in the `config` director
 You can create your own configuration files to experiment with different models, datasets, and hyperparameters.
 
 ## Tracking metrics in wandb
-<img width="4068" height="2272" alt="image" src="https://github.com/user-attachments/assets/069dca9d-e4af-455f-93c3-9bac5d063fc7" />
+![alt text](assets/image.png)
 
 ## License
 
