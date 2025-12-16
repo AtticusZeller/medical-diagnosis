@@ -1,138 +1,88 @@
 <div align="center">
 
-# 🧪 Pytorch Lightning UV Template
+# Medical Diagnosis with Transfer Learning
 
-A modern Deep Learning experiment template with PyTorch Lightning
-
-[![python](https://img.shields.io/badge/-Python_3.10_%7C_3.11_%7C_3.12-blue?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-310/)
-[![pytorch](https://img.shields.io/badge/PyTorch_2.5+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
-[![lightning](https://img.shields.io/badge/-Lightning_2.5+-792ee5?logo=pytorchlightning&logoColor=white)](https://lightning.ai/)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/ashleve/lightning-hydra-template#license)
-[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/AtticusZeller/medical-diagnosis/pulls)
-
-Click on [<kbd>Use this template</kbd>](https://github.com/AtticusZeller/medical-diagnosis/generate) to initialize new repository.
+A modern Deep Learning project for medical diagnosis using PyTorch Lightning and Transfer Learning.
 
 </div>
 
-## ✨ Features
+## Introduction
 
-* 🚀 **UV Environment Management** - Fast and efficient dependency management
-* 🎯 **Typer CLI** - Modern command line interface
-* ⚙️ **YAML Config** - Flexible experiment configuration
-* 🔋 **Lightning Components**
-  + DataModule for clean data handling
-  + Model with built-in training logic
-  + Trainer with all the bells and whistles
-* 📊 **Weights & Biases Integration**
-  + Experiment tracking and visualization
-  + Hyperparameter optimization with sweeps
-  + Dataset analysis and exploration
-* 🎨 **Clean Project Structure**
-  + Modular and maintainable codebase
-  + Easy to extend and customize
+This project provides a framework for training and evaluating deep learning models for medical diagnosis tasks. It leverages PyTorch Lightning for streamlined training, Weights & Biases for experiment tracking, and Transfer Learning to utilize pre-trained models for improved performance. The current example focuses on diagnosing pneumonia from chest X-ray images.
 
-## 🛠️ Installation
+## Hardware Requirements
 
-```bash
-# install dependencies
-uv sync --dev
-# install project as a package
-uv pip install -e .
-```
+- **NVIDIA GPU**: A CUDA-compatible NVIDIA GPU is required for training and evaluation.
+- **CUDA**: CUDA 12.6 or a compatible version must be installed.
 
 > [!note]
-> 1. remember to replace `atticux` with your actual W&B entity in the config files and `config.py`
+> run `nvidia-smi` to check your GPU and CUDA installation.
 
-> 2. `uv run` before bash scripts to ensure the environment is activated
+## Software Requirements
 
-## 📊 Dataset Analysis
+The project uses Python 3.12 and a set of libraries for deep learning, data manipulation, and command-line interface.
 
-Explore and analyze your dataset with built-in EDA tools:
+## Installation
 
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/AtticusZeller/medical-diagnosis.git
+    cd medical-diagnosis
+    ```
+
+2.  **Install dependencies:**
+    It is recommended to use [uv](https://docs.astral.sh/uv/getting-started/installation/) to manage your virtual environments.
+    ```bash
+    uv sync --dev --all-extras
+    uv pip install -e .
+    ```
+3.  **Download the dataset:**
+    Make sure you have your Kaggle API token set up. Then run the following script:
+    ```bash
+    ./scripts/download_datasets.sh
+    ```
+
+## Usage
+
+The project uses a command-line interface (CLI) for running experiments. The main entry point is `src/expt/main.py`.
+
+
+### Training
+
+To train a model, use the `--train` flag. The configuration for the training can be specified with the `--config-file` option.
+
+> [!warning]
+> update `logger.entity` of config file with your [wandb](https://wandb.ai/) team name
 ```bash
-python -m expt.main -c config/resnet.yml --eda
+python src/expt/main.py --config-file config/resnet.yml --train
 ```
 
-<details>
-<summary>📈 View EDA Example</summary>
+This will train the model and, upon completion, run the evaluation on the test set. The run ID of the training will be used for the evaluation.
+> [!note]
+> It will run evaluation automatically after training.
 
-![EDA Example](assets/eda.png)
+### Evaluation
 
-</details>
-
-## 🚀 Training
-
-Start training your model with a single command:
+To evaluate a specific model, you need to provide its run ID.
 
 ```bash
-python -m expt.main -c config/resnet.yml --train
+python src/expt/main.py --config-file config/resnet.yml --eval-id <your_run_id>
 ```
 
-<details>
-<summary>🔍 View Training Details</summary>
+## Configuration
 
-### Configuration Overview
+The experiments are configured using YAML files located in the `config` directory.
 
-![Config Display](assets/config_show.png)
+-   `config/train.yml`: Main configuration for training.
+-   `config/resnet.yml`: Configuration for a ResNet model.
+-   `config/efficientnet_v2.yml`: Configuration for an EfficientNetV2 model.
+-   `config/sweep/`: Directory for sweep configurations.
 
-### Training Progress
+You can create your own configuration files to experiment with different models, datasets, and hyperparameters.
 
-![Training Step](assets/step.png)
+## Tracking metrics in wandb
+<img width="4068" height="2272" alt="image" src="https://github.com/user-attachments/assets/069dca9d-e4af-455f-93c3-9bac5d063fc7" />
 
-### Training Summary
-
-![Training Summary](assets/summary.png)
-
-### W&B Dashboard
-
-![Wandb Dashboard](assets/train.png)
-
-</details>
-
-## 📊 Evaluation
-
-Evaluate your trained model:
-
-```bash
-python -m expt.main -c config/resnet.yml --eval --run-id n8fjnlyi
-```
-
-<details>
-<summary>📊 View Evaluation Results</summary>
-
-![Evaluation Results](assets/result.png)
-
-</details>
-
-## 🎛️ Hyperparameter Tuning
-
-Optimize your model with W&B Sweeps:
-
-```bash
-python -m expt.main -c config/resnet.yml --sweep --sweep-config config/sweep/mlp.yml
-```
-
-<details>
-<summary>📈 View Sweep Results</summary>
-
-![Sweep Results](assets/sweep.png)
-
-</details>
-
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgements
-
-* [PyTorch Lightning](https://lightning.ai/)
-* [Weights & Biases](https://wandb.ai/)
-* [Typer](https://typer.tiangolo.com/)
-* [UV](https://github.com/astral-sh/uv)
-
----
-
-<div align="center">
-Made with ❤️ for the ML community
-</div>
