@@ -10,7 +10,7 @@ logger:
   mode: max
   monitor: val_best_f1
   project: medical-diagnosis
-  run_name: resnet18_chest_xray
+  run_name: test_run
 loss:
   alpha: null
   class_weights: null

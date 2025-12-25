@@ -1,16 +1,16 @@
 data:
   augmentation: null
-  transform: efficientnetv2_pt
-  batch_size: 256
-  dataset: chest_xray
+  transform: densnet_pt
+  batch_size: 512
   num_classes: 2
+  dataset: chest_xray
 logger:
   entity: atticux
   log_every_n_steps: 5
   mode: max
   monitor: val_best_f1
   project: medical-diagnosis
-  run_name: efficient_v2_chest_xray
+  run_name: densenet121_chest_xray
 loss:
   alpha: null
   class_weights: null
@@ -18,15 +18,15 @@ loss:
   name: cross_entropy
   reduction: mean
 model:
-  efficient_version: m
-  name: Efficientnet_V2
+  name: densenet121
   unfreeze_layers:
-    - "classifier"
+    - classifier
+
 optimizer:
-  lr: 0.1
+  lr: 0.01
   name: adam
 training:
   accumulate_grad_batches: null
   gradient_clip_val: null
-  max_epochs: 6
+  max_epochs: 10
   precision: null

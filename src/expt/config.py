@@ -42,7 +42,9 @@ class DataConfig:
     batch_size: int = 128
     num_classes: int = 2
     augmentation: list[str] | None = None
-    transform: Literal["base", "resnet_pt", "efficientnetv2_pt"] = "base"
+    transform: Literal[
+        "resnet_pt", "efficientnetv2_pt", "vit_pt", "swinv2_tiny_pt", "densnet_pt"
+    ] = "resnet_pt"
 
 
 @dataclass

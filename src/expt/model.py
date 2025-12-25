@@ -4,13 +4,13 @@ from typing import Literal
 import lightning.pytorch as pl
 import timm
 import torch
-import wandb
 from rich import print
 from torch import Tensor, is_tensor, nn
 from torch.nn import CrossEntropyLoss, functional as F
-from torch.optim import Adam, Optimizer
+from torch.optim import AdamW, Optimizer
 from torchmetrics.functional import accuracy, auroc, f1_score, precision_recall_curve
 
+import wandb
 from expt import loss
 from expt.config import Config
 from expt.utils import check_transform
@@ -189,7 +189,7 @@ class BaseModel(pl.LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """defines model optimizer"""
-        return Adam(self.parameters(), lr=self.lr)
+        return AdamW(self.parameters(), lr=self.lr)
 
 
 class FineTuneBaseModel(BaseModel):
@@ -300,10 +300,190 @@ class EfficientNetV2Transfer(FineTuneBaseModel):
         return self.model(x)
 
 
+class ViTTransfer(FineTuneBaseModel):
+    """Vision Transformer transfer learning model
+
+    Features:
+    - Uses pretrained ViT as backbone (ImageNet-21k pretrained recommended)
+    - Custom classification head (replace the original head)
+    - Supports partial fine-tuning (only head, or head + last N blocks)
+
+    Architecture:
+    - Patch Embedding: 224×224 image → 196 patches (14×14) of 16×16 pixels
+    - Transformer Encoder: Multi-head self-attention + MLP blocks
+    - Classification Head: [CLS] token → Linear(hidden_dim, num_classes)
+    """
+
+    def __init__(
+        self,
+        num_classes: int = 2,
+        model_name: str = "vit_base_patch16_224",  # or vit_small_patch16_224
+        lr: float = 1e-4,
+        unfreeze_layers: list[str] | None = None,
+        loss_fn: nn.Module | None = None,
+    ) -> None:
+        super().__init__()
+
+        # Load pretrained ViT from timm
+        # Available models: vit_tiny/small/base/large_patch16_224
+        # Add '.augreg_in21k_ft_in1k' suffix for ImageNet-21k pretrained models
+        self.model = timm.create_model(
+            model_name, pretrained=True, num_classes=num_classes
+        )
+
+        # Check model's expected input transformation
+        check_transform(self.model)
+
+        # Optimizer & Loss
+        self.lr = lr
+        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
+
+        # Save hyperparameters for checkpoint
+        self.save_hyperparameters(ignore=["loss_fn"])
+
+        # Freeze layers if specified
+        if unfreeze_layers is not None:
+            self.freeze_except(unfreeze_layers)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.model(x)
+
+
+class SwinV2Transfer(FineTuneBaseModel):
+    """Swin Transformer V2 Transfer Learning Model
+
+    Why SOTA?
+    - Hierarchical structure (like CNNs) provides multi-scale features.
+    - Shifted Windows approach enables linear complexity (efficiency).
+    - V2 specific: Better scaling and stability via Post-Norm and Cosine Attention.
+
+    Architecture:
+    - Shifted Window Attention: Local attention within windows +
+        shifting to cross windows.
+    - Head: 'head' layer (Linear)
+    """
+
+    def __init__(
+        self,
+        num_classes: int = 2,
+        model_name: str = "swinv2_tiny_window8_256",
+        lr: float = 1e-4,
+        unfreeze_layers: list[str] | None = None,
+        loss_fn: nn.Module | None = None,
+    ) -> None:
+        super().__init__()
+
+        # Load SwinV2 from timm
+        # Common choices:
+        # - swinv2_tiny_window8_256 (Efficient, good for small data)
+        # - swinv2_base_window12_192_22k (Pretrained on huge dataset, robust features)
+        self.model = timm.create_model(
+            model_name, pretrained=True, num_classes=num_classes
+        )
+
+        check_transform(self.model)
+
+        self.lr = lr
+        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
+
+        self.save_hyperparameters(ignore=["loss_fn"])
+
+        if unfreeze_layers is not None:
+            self.freeze_except(unfreeze_layers)
+        else:
+            # 默认只微调 Head
+            self.freeze_except(["head"])
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.model(x)
+
+
+class DenseNetTransfer(FineTuneBaseModel):
+    """DenseNet transfer learning model
+
+    Relevance:
+    - Heavily used in medical imaging (e.g., CheXNet uses DenseNet121).
+    - Features intensive feature reuse through dense connections.
+
+    Architecture:
+    - Backbone: DenseNet121/169/201
+    - Head: 'classifier' layer (Linear)
+    """
+
+    def __init__(
+        self,
+        num_classes: int = 2,
+        model_name: str = "densenet121",  # Default to CheXNet backbone
+        lr: float = 1e-3,
+        unfreeze_layers: list[str] | None = None,
+        loss_fn: nn.Module | None = None,
+    ) -> None:
+        super().__init__()
+
+        # Load DenseNet from timm
+        # Common choices: densenet121, densenet161, densenet169, densenet201
+        self.model = timm.create_model(
+            model_name, pretrained=True, num_classes=num_classes
+        )
+
+        check_transform(self.model)
+
+        self.lr = lr
+        self.loss = loss_fn if loss_fn is not None else CrossEntropyLoss()
+
+        self.save_hyperparameters(ignore=["loss_fn"])
+
+        if unfreeze_layers is not None:
+            self.freeze_except(unfreeze_layers)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.model(x)
+
+
 def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
     """Factory function to create model based on config"""
     loss_fn = loss.create_loss_function(config.loss)
-    if config.model.name.lower() == "resnet18":
+    model_name = config.model.name.lower()
+
+    if "swin" in model_name:
+        return (
+            SwinV2Transfer(
+                num_classes=config.data.num_classes,
+                model_name=config.model.name,
+                lr=config.optimizer.lr,
+                unfreeze_layers=config.model.unfreeze_layers,
+                loss_fn=loss_fn,
+            )
+            if model_path is None
+            else SwinV2Transfer.load_from_checkpoint(model_path)
+        )
+
+    elif "vit" in model_name:
+        return (
+            ViTTransfer(
+                num_classes=config.data.num_classes,
+                model_name=config.model.name,
+                lr=config.optimizer.lr,
+                unfreeze_layers=config.model.unfreeze_layers,
+                loss_fn=loss_fn,
+            )
+            if model_path is None
+            else ViTTransfer.load_from_checkpoint(model_path)
+        )
+    elif "densenet" in model_name:
+        return (
+            DenseNetTransfer(
+                num_classes=config.data.num_classes,
+                model_name=config.model.name,
+                lr=config.optimizer.lr,
+                unfreeze_layers=config.model.unfreeze_layers,
+                loss_fn=loss_fn,
+            )
+            if model_path is None
+            else DenseNetTransfer.load_from_checkpoint(model_path)
+        )
+
+    elif model_name == "resnet18":
         return (
             ResNet18Transfer(
                 num_classes=config.data.num_classes,
@@ -314,7 +494,7 @@ def create_model(config: Config, model_path: Path | None = None) -> BaseModel:
             if model_path is None
             else ResNet18Transfer.load_from_checkpoint(model_path)
         )
-    elif config.model.name.lower() == "efficientnet_v2":
+    elif model_name == "efficientnet_v2":
         return (
             EfficientNetV2Transfer(
                 num_classes=config.data.num_classes,

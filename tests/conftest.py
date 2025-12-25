@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import wandb
 from lightning import seed_everything
 
+import wandb
 from expt.config import Config, ConfigManager
 
 
